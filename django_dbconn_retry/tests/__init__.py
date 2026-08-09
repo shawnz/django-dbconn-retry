@@ -75,6 +75,29 @@ class FullErrorTests(TestCase):
         self.assertRaises(MockBaseException, connection.ensure_connection)
         self.assertFalse(hasattr(connection, '_in_connecting'))
 
+    @override_settings(MAX_DBCONN_RETRY_TIMES=max_dbconn_retry_times)
+    def test_no_reset_after_exhaustion_by_default(self) -> None:
+        self.assertRaises(OperationalError, connection.ensure_connection)
+        BaseDatabaseWrapper.connect.reset_mock()
+        self.assertRaises(OperationalError, connection.ensure_connection)
+        BaseDatabaseWrapper.connect.assert_called_once()
+        del connection._connection_retries
+
+    @override_settings(MAX_DBCONN_RETRY_TIMES=max_dbconn_retry_times, DBCONN_RETRY_RESET_AFTER_EXHAUSTION=True)
+    def test_reset_after_exhaustion(self) -> None:
+        self.assertRaises(OperationalError, connection.ensure_connection)
+        self.assertEqual(connection._connection_retries, 0)
+        BaseDatabaseWrapper.connect.reset_mock()
+        self.assertRaises(OperationalError, connection.ensure_connection)
+        self.assertEqual(BaseDatabaseWrapper.connect.call_count, self.max_dbconn_retry_times + 1)
+        del connection._connection_retries
+
+    @override_settings(MAX_DBCONN_RETRY_TIMES=max_dbconn_retry_times, DBCONN_RETRY_RESET_AFTER_EXHAUSTION="invalid")
+    def test_invalid_reset_after_exhaustion(self) -> None:
+        self.assertRaises(OperationalError, connection.ensure_connection)
+        self.assertEqual(connection._connection_retries, self.max_dbconn_retry_times)
+        del connection._connection_retries
+
 
 def fix_connection(sender: type, *, dbwrapper: BaseDatabaseWrapper, **kwargs: Any) -> None:
     dbwrapper.connect = dbwrapper.s_connect

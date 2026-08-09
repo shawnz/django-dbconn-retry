@@ -61,6 +61,14 @@ def monkeypatch_django() -> None:
                 self._dbconn_retry_backoff,
             )
             self._dbconn_retry_backoff = 1
+        self._dbconn_retry_reset_after_exhaustion = getattr(settings, "DBCONN_RETRY_RESET_AFTER_EXHAUSTION", False)
+        # Validate and normalize the reset flag to a boolean
+        if not isinstance(self._dbconn_retry_reset_after_exhaustion, bool):
+            _log.warning(
+                "Invalid DBCONN_RETRY_RESET_AFTER_EXHAUSTION setting %r; falling back to False.",
+                self._dbconn_retry_reset_after_exhaustion,
+            )
+            self._dbconn_retry_reset_after_exhaustion = False
 
         if self.connection is not None and hasattr(self.connection, 'closed') and self.connection.closed:
             _log.debug("failed connection detected")
@@ -124,6 +132,8 @@ def monkeypatch_django() -> None:
                     # always clear the flag
                     if hasattr(self, '_in_connecting'):
                         del self._in_connecting
+                    if self._dbconn_retry_reset_after_exhaustion:
+                        self._connection_retries = 0
 
     _log.debug("django_dbconn_retry: monkeypatching BaseDatabaseWrapper")
     django_db_base.BaseDatabaseWrapper.ensure_connection = ensure_connection_with_retries
